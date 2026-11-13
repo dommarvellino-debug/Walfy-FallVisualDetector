@@ -116,7 +116,7 @@ same project folder and run:
 
 ```powershell
 py -3 -m venv .venv
-& ".venv\Scripts\python.exe" -m pip install mediapipe numpy pandas scipy opencv-python
+& ".venv\Scripts\python.exe" -m pip install -r requirements.txt
 ```
 
 The MCFD and CCTV evaluation datasets are not included in the download. Dataset

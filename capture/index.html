@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Walk Tracker — capture</title>
+<style>
+  :root { color-scheme: dark; --bg:#111; --panel:#1c1c1f; --line:#2e2e33; --fg:#e8e8ea; --dim:#9a9aa4; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 system-ui, sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin-bottom: 18px; font-size: 13px; }
+  .grid { display:grid; grid-template-columns: 1.4fr 1fr; gap:18px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  .stage { position:relative; background:#000; border-radius:8px; overflow:hidden; aspect-ratio: 4/3; }
+  video, canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  canvas { pointer-events:none; }
+  .badge { position:absolute; top:8px; left:8px; z-index:10; font:12px/1 ui-monospace, monospace; padding:6px 8px; border-radius:6px; background:rgba(0,0,0,0.75); color:var(--fg); border:1px solid var(--line); transition: background .2s, color .2s, border-color .2s; }
+  .badge.down { background:#7f1d1d; color:#fecaca; border-color:#991b1b; animation: badgepulse 1s ease-in-out infinite; }
+  .badge.upright { background:#14532d; color:#bbf7d0; border-color:#166534; }
+  .badge.walking { background:#1e3a8a; color:#bfdbfe; border-color:#1e40af; }
+  .badge.standing { background:#374151; color:#e5e7eb; border-color:#4b5563; }
+  .badge.unknown { background:#78350f; color:#fde68a; border-color:#92400e; }
+  .badge.nopose { background:#1f2937; color:#9ca3af; border-color:#374151; }
+  @keyframes badgepulse { 0%,100% { opacity:1; } 50% { opacity:.6; } }
+  label { display:block; margin:10px 0 4px; color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  input, select { width:100%; padding:8px; background:#0d0d0f; color:var(--fg); border:1px solid var(--line); border-radius:6px; font:inherit; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  button { padding:10px 14px; border-radius:8px; border:1px solid var(--line); background:#26262b; color:var(--fg); font:inherit; cursor:pointer; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  button.primary { background:#2563eb; border-color:#2563eb; }
+  button.danger { background:#7f1d1d; border-color:#7f1d1d; }
+  button.rec { background:#b91c1c; border-color:#b91c1c; }
+  .actions { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+  .actions button { flex:1; min-width:120px; }
+  #status { margin-top:12px; font:12px/1.6 ui-monospace, monospace; color:var(--dim); white-space:pre-wrap; }
+  .posture { margin-top:10px; font:13px/1.4 ui-monospace, monospace; padding:8px 10px; border-radius:6px; background:#0d0d0f; border:1px solid var(--line); }
+  .posture.down { background:#7f1d1d; border-color:#991b1b; color:#fecaca; }
+  .posture.upright { color:#86efac; }
+  .hint { color:var(--dim); font-size:12px; margin-top:10px; }
+  .num { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Walk Tracker — capture</h1>
+  <div class="sub">Records pose landmarks for a Timed Up and Go trial. Capture only — analysis runs in Python.
+    A live upright / down indicator is shown for the operator; it is not the validated result.</div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="stage">
+        <video id="video" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div class="badge" id="badge">idle</div>
+      </div>
+      <div id="posture" class="posture">posture: camera off</div>
+      <div class="actions">
+        <button id="btnCamera" class="primary">Start camera</button>
+        <button id="btnRecord" class="rec" disabled>Record</button>
+        <button id="btnStop" class="danger" disabled>Stop</button>
+        <button id="btnSave" disabled>Save session</button>
+        <button id="btnRecover" hidden>Recover last</button>
+      </div>
+      <div id="status">idle</div>
+      <div class="hint">
+        Keep the whole 3 m path in frame. The subject should stay above roughly a
+        quarter of the frame height — if they shrink at the far end, tracking degrades.
+        Preview is never mirrored, so left and right landmarks stay correct.
+      </div>
+      <div class="hint">
+        Every recording is also kept in this browser's local storage, so if the
+        download never arrives you can reload and press <em>Recover last</em>.
+      </div>
+    </div>
+
+    <div class="panel">
+      <label for="subject">Subject ID</label>
+      <input id="subject" value="S01" autocomplete="off" />
+
+      <div class="row">
+        <div>
+          <label for="trial">Trial</label>
+          <input id="trial" type="number" min="1" value="1" />
+        </div>
+        <div>
+          <label for="view">View</label>
+          <select id="view">
+            <option value="sagittal">sagittal (side)</option>
+            <option value="frontal">frontal (front)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="height">Height (cm)</label>
+          <input id="height" type="number" min="100" max="220" value="170" />
+        </div>
+        <div>
+          <label for="distance">Camera distance (m)</label>
+          <input id="distance" type="number" min="1" max="12" step="0.1" value="4" />
+        </div>
+      </div>
+
+      <label for="stopwatch">Stopwatch TUG time (s, optional)</label>
+      <input id="stopwatch" type="number" min="0" step="0.01" placeholder="e.g. 11.42" />
+      <div class="hint">Enter the manual stopwatch reading for the same trial. This is how the
+        pipeline gets validated — measured duration versus operator timing.</div>
+
+      <label for="notes">Notes</label>
+      <input id="notes" placeholder="footwear, assistive device, deviations" />
+    </div>
+  </div>
+</main>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

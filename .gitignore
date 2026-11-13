@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+
+data/raw/
+data/derived/
+
+node_modules/
+dist/
+
+*.task
+!models/*.task

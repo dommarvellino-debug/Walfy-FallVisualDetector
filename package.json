@@ -1,0 +1,6 @@
+{
+  "name": "walk-tracker-capture",
+  "private": true,
+  "type": "module",
+  "description": "Marks capture/*.js as ES modules so Node can import the shared posture logic in tools/."
+}
